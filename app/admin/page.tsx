@@ -391,30 +391,23 @@ export default function AdminPage() {
           <div className="admin-col">
             <div className="card">
               <div className="section-title">📊 Participant Data Management</div>
-              <h2 className="card-title">Bulk Excel &amp; CSV Ingestion</h2>
+              <h2 className="card-title">Bulk Excel Ingestion</h2>
               <p className="card-subtitle">
-                Upload your participant spreadsheet to sync student verification records. Matching is
+                Upload your participant Excel sheet (.xlsx, .xls) to sync student verification records. Matching is
                 case-insensitive by <strong>Full Name</strong>, <strong>Email</strong>, and <strong>SAP ID</strong>.
               </p>
 
-              {/* Sample Download Shortcuts */}
+              {/* Sample Download Shortcut */}
               <div className="sample-actions-row">
                 <span style={{ fontSize: '0.78rem', color: 'var(--color-white-muted)' }}>
-                  Need a template?
+                  Need an Excel template?
                 </span>
                 <a
-                  href="/sample-data/dummy_participants.xlsx"
-                  download="dummy_participants.xlsx"
+                  href="/sample-data/participant_template.xlsx"
+                  download="participant_template.xlsx"
                   className="sample-btn"
                 >
-                  📥 Download Sample (.xlsx)
-                </a>
-                <a
-                  href="/sample-data/dummy_participants.csv"
-                  download="dummy_participants.csv"
-                  className="sample-btn"
-                >
-                  📥 Download Sample (.csv)
+                  📥 Download Excel Template (.xlsx)
                 </a>
               </div>
 
@@ -423,7 +416,7 @@ export default function AdminPage() {
                 <input
                   id="excel-file-input"
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".xlsx,.xls"
                   onChange={(e) => setExcelFile(e.target.files?.[0] ?? null)}
                 />
                 <div className="file-upload-icon">📄</div>
@@ -431,7 +424,7 @@ export default function AdminPage() {
                   <strong>Click to choose file</strong> or drag and drop here
                 </p>
                 <p className="file-upload-text" style={{ fontSize: '0.75rem', marginTop: '0.35rem' }}>
-                  Supports Microsoft Excel (.xlsx, .xls) and standard CSV (.csv)
+                  Supports Microsoft Excel (.xlsx, .xls)
                 </p>
                 {excelFile && (
                   <div className="file-name">
