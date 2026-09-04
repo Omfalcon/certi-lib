@@ -7,17 +7,17 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
  * RateLimiterRedis with Upstash Redis instead.
  */
 export const verifyRateLimiter = new RateLimiterMemory({
-  points: 10,       // max requests
+  points: 30,       // max 30 requests per minute
   duration: 60,     // per 60 seconds
 });
 
 /**
- * Rate limiter for the admin upload endpoints.
- * More restrictive — 5 requests per 5 minutes per IP.
+ * Rate limiter for the admin endpoints.
+ * Allows 120 requests per minute to support listing, searching, editing and uploading.
  */
 export const adminRateLimiter = new RateLimiterMemory({
-  points: 5,
-  duration: 300,
+  points: 120,
+  duration: 60,
 });
 
 /**

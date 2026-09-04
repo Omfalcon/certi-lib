@@ -12,6 +12,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
   const [verifiedName, setVerifiedName] = useState('');
+  const [templateUrl, setTemplateUrl] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -43,6 +44,9 @@ export default function HomePage() {
       }
 
       setVerifiedName(data.name);
+      if (data.templateUrl) {
+        setTemplateUrl(data.templateUrl);
+      }
       setStatus('success');
     } catch {
       setStatus('error');
@@ -53,13 +57,21 @@ export default function HomePage() {
   const handleDownload = async () => {
     setIsGenerating(true);
     try {
-      // Use the template from Supabase Storage (public URL)
-      // Fallback to the local public image during development
-      const templateUrl = '/certificate-template.png';
+      // Use active template from Supabase
+      let activeUrl = templateUrl;
+      if (!activeUrl) {
+        const res = await fetch('/api/template');
+        const d = await res.json();
+        activeUrl = d.templateUrl;
+      }
+
+      if (!activeUrl) {
+        throw new Error('Certificate template not found in Supabase. Please contact the administrator.');
+      }
 
       await generateAndDownloadCertificate({
         name: verifiedName,
-        templateUrl,
+        templateUrl: activeUrl,
       });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to generate certificate.');
@@ -72,6 +84,7 @@ export default function HomePage() {
     setStatus('idle');
     setMessage('');
     setVerifiedName('');
+    setTemplateUrl('');
     setName('');
     setEmail('');
     setSapid('');

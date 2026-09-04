@@ -201,33 +201,34 @@ export default function AdminPage() {
   /* -----------------------------------------------
      Direct Delete Participant
   ----------------------------------------------- */
-  const handleDeleteParticipant = async (id: number, name: string) => {
-    if (!confirm(`Are you sure you want to remove "${name}"?`)) return;
+  const handleDeleteParticipant = async (id: number, name: string, sapid?: string, email?: string) => {
+    if (!confirm(`Are you sure you want to remove "${name}" (${sapid || 'ID ' + id}) from Supabase?`)) return;
 
     setDeletingId(id);
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
+
     try {
       const res = await fetch('/api/participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          password,
+          password: token,
           action: 'delete',
           id,
+          sapid,
+          email,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error ?? 'Failed to delete participant.');
+        alert(data.error ?? 'Failed to delete participant from Supabase.');
         return;
       }
 
-      // Optimistically update list
-      setParticipants((prev) => prev.filter((p) => p.id !== id));
-      setDashboard((prev) =>
-        prev ? { ...prev, participantCount: Math.max(0, prev.participantCount - 1) } : prev
-      );
+      // Re-fetch all participants directly from Supabase to guarantee UI sync
+      await fetchParticipants(token);
     } catch {
       alert('Network error. Failed to delete participant.');
     } finally {
@@ -257,9 +258,10 @@ export default function AdminPage() {
     setExcelState('uploading');
     setExcelMessage('');
 
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     const formData = new FormData();
     formData.append('file', excelFile);
-    formData.append('password', password);
+    formData.append('password', token);
 
     try {
       const res = await fetch('/api/upload-excel', {
@@ -282,8 +284,8 @@ export default function AdminPage() {
       );
       setExcelFile(null);
 
-      // Refresh participant directory
-      fetchParticipants(password);
+      // Refresh participant directory from Supabase
+      fetchParticipants(token);
     } catch {
       setExcelState('error');
       setExcelMessage('Network error. Please try again.');
@@ -298,9 +300,10 @@ export default function AdminPage() {
     setTemplateState('uploading');
     setTemplateMessage('');
 
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     const formData = new FormData();
     formData.append('file', templateFile);
-    formData.append('password', password);
+    formData.append('password', token);
 
     try {
       const res = await fetch('/api/upload-template', {
@@ -318,6 +321,7 @@ export default function AdminPage() {
 
       setTemplateState('success');
       setTemplateMessage(data.message);
+      // Instantly update dashboard template URL from Supabase response
       setDashboard((prev) => (prev ? { ...prev, templateUrl: data.url } : prev));
       setTemplateFile(null);
     } catch {
@@ -334,11 +338,12 @@ export default function AdminPage() {
     setClearMessage('');
     setShowClearConfirm(false);
 
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     try {
       const res = await fetch('/api/clear-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: token }),
       });
 
       const data = await res.json();
@@ -743,7 +748,7 @@ export default function AdminPage() {
                       <td style={{ textAlign: 'right' }}>
                         <button
                           className="btn-icon-danger"
-                          onClick={() => handleDeleteParticipant(p.id, p.name)}
+                          onClick={() => handleDeleteParticipant(p.id, p.name, p.sapid, p.email)}
                           disabled={deletingId === p.id}
                           title="Remove participant from database"
                         >
@@ -928,16 +933,26 @@ export default function AdminPage() {
                   />
                   <div
                     style={{
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(0,0,0,0.4)',
+                      padding: '0.6rem 0.85rem',
+                      background: 'rgba(0,0,0,0.5)',
                       fontSize: '0.75rem',
-                      color: 'var(--color-success)',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.35rem',
+                      justifyContent: 'space-between',
+                      borderTop: '1px solid var(--color-white-border)',
                     }}
                   >
-                    <span>●</span> Active Template in Supabase Storage
+                    <span style={{ color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span>●</span> Active in Supabase Storage
+                    </span>
+                    <a
+                      href={dashboard.templateUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--color-gold)', textDecoration: 'underline' }}
+                    >
+                      Open in New Tab ↗
+                    </a>
                   </div>
                 </div>
               ) : (
@@ -952,7 +967,7 @@ export default function AdminPage() {
                     color: 'var(--color-white-muted)',
                   }}
                 >
-                  Currently utilizing default asset (/certificate-template.png).
+                  Template is managed and served directly from Supabase Storage bucket &quot;certificates&quot;.
                 </div>
               )}
 

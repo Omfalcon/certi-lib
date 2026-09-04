@@ -77,9 +77,31 @@ export async function POST(req: NextRequest) {
     ip_address: ip,
   });
 
-  // 5. Return the verified name (use DB-stored name for certificate)
+  // 5. Fetch active certificate template URL dynamically from Supabase
+  let templateUrl: string | null = null;
+  try {
+    const { data: settingData } = await getSupabaseAdmin()
+      .from('settings')
+      .select('value')
+      .eq('key', 'template_url')
+      .maybeSingle();
+
+    if (settingData?.value) {
+      templateUrl = settingData.value;
+    } else {
+      const { data: urlData } = getSupabaseAdmin().storage
+        .from('certificates')
+        .getPublicUrl('certificate-template.png');
+      templateUrl = urlData?.publicUrl ?? null;
+    }
+  } catch (err) {
+    console.warn('[verify] Failed to fetch template URL from Supabase:', err);
+  }
+
+  // 6. Return the verified name and Supabase template URL
   return successResponse({
     verified: true,
     name: data.name,
+    templateUrl,
   });
 }

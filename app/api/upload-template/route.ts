@@ -5,9 +5,8 @@ import { sanitizeString, verifyAdminPassword, errorResponse, successResponse } f
 
 export const runtime = 'nodejs';
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8MB
 const BUCKET = 'certificates';
-const TEMPLATE_KEY = 'certificate-template.png';
 
 export async function POST(req: NextRequest) {
   // 1. Rate limiting
@@ -15,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     await adminRateLimiter.consume(ip);
   } catch {
-    return errorResponse('Too many requests.', 429);
+    return errorResponse('Too many requests. Please wait a moment.', 429);
   }
 
   // 2. Parse form data
@@ -29,7 +28,7 @@ export async function POST(req: NextRequest) {
   // 3. Admin password check
   const password = sanitizeString(formData.get('password') as string);
   if (!verifyAdminPassword(password)) {
-    return errorResponse('Unauthorized.', 401);
+    return errorResponse('Unauthorized. Invalid admin password.', 401);
   }
 
   // 4. Get the file
@@ -39,7 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (file.size > MAX_FILE_SIZE) {
-    return errorResponse('File too large. Maximum 5MB allowed.', 400);
+    return errorResponse('File too large. Maximum 8MB allowed.', 400);
   }
 
   const allowedMimes = ['image/png', 'image/jpeg', 'image/jpg'];
@@ -47,38 +46,67 @@ export async function POST(req: NextRequest) {
     return errorResponse('Only PNG or JPG image files are allowed.', 400);
   }
 
-  // 5. Delete existing template first
-  await getSupabaseAdmin().storage.from(BUCKET).remove([TEMPLATE_KEY]);
+  // 5. Ensure bucket exists
+  try {
+    const { data: buckets } = await getSupabaseAdmin().storage.listBuckets();
+    if (!buckets?.some((b) => b.name === BUCKET)) {
+      await getSupabaseAdmin().storage.createBucket(BUCKET, { public: true });
+    }
+  } catch (bucketErr) {
+    console.warn('[upload-template] Storage bucket check notice:', bucketErr);
+  }
 
-  // 6. Upload to Supabase Storage
+  const ext = file.type.includes('jpeg') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg') ? 'jpg' : 'png';
+  const timestamp = Date.now();
+  const uniqueKey = `certificate-template-${timestamp}.${ext}`;
   const buffer = await file.arrayBuffer();
+
+  // 6. Upload versioned template to Supabase Storage with no cache
   const { error: uploadError } = await getSupabaseAdmin().storage
     .from(BUCKET)
-    .upload(TEMPLATE_KEY, buffer, {
+    .upload(uniqueKey, buffer, {
       contentType: file.type,
+      cacheControl: '0',
       upsert: true,
     });
 
   if (uploadError) {
-    console.error('[upload-template] Upload error:', uploadError.message);
-    return errorResponse('Failed to upload template.', 500);
+    console.error('[upload-template] Storage upload error:', uploadError.message);
+    return errorResponse('Failed to upload template to Supabase Storage: ' + uploadError.message, 500);
   }
 
-  // 7. Get the public URL
+  // Also update standard 'certificate-template.png' in storage
+  await getSupabaseAdmin().storage
+    .from(BUCKET)
+    .upload('certificate-template.png', buffer, {
+      contentType: file.type,
+      cacheControl: '0',
+      upsert: true,
+    })
+    .catch((err) => console.warn('Standard template sync note:', err));
+
+  // 7. Get the public URL for the newly uploaded template
   const { data: urlData } = getSupabaseAdmin().storage
     .from(BUCKET)
-    .getPublicUrl(TEMPLATE_KEY);
+    .getPublicUrl(uniqueKey);
 
-  // 8. Save URL to settings
-  await getSupabaseAdmin().from('settings').upsert({
+  const publicUrl = urlData.publicUrl;
+
+  // 8. Save new template URL to Supabase settings table
+  const { error: settingsError } = await getSupabaseAdmin().from('settings').upsert({
     key: 'template_url',
-    value: urlData.publicUrl,
+    value: publicUrl,
+    updated_at: new Date().toISOString(),
   });
+
+  if (settingsError) {
+    console.error('[upload-template] Settings update error:', settingsError.message);
+    return errorResponse('Template uploaded to Storage but failed to update settings: ' + settingsError.message, 500);
+  }
 
   return successResponse({
     success: true,
-    url: urlData.publicUrl,
-    message: 'Certificate template uploaded successfully.',
+    url: publicUrl,
+    message: 'Certificate template uploaded and synced to Supabase successfully.',
   });
 }
-

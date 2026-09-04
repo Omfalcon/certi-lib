@@ -36,10 +36,11 @@ export async function generateAndDownloadCertificate({
   name,
   templateUrl,
 }: GenerateCertificateOptions): Promise<void> {
-  // 1. Fetch the certificate template image
-  const templateRes = await fetch(templateUrl);
+  // 1. Fetch the certificate template image from Supabase (with cache buster)
+  const fetchUrl = templateUrl.includes('?') ? `${templateUrl}&_cb=${Date.now()}` : `${templateUrl}?_cb=${Date.now()}`;
+  const templateRes = await fetch(fetchUrl);
   if (!templateRes.ok) {
-    throw new Error('Failed to load certificate template. Please try again.');
+    throw new Error('Failed to load certificate template from Supabase Storage. Please try again.');
   }
   const templateBytes = await templateRes.arrayBuffer();
 
@@ -53,8 +54,26 @@ export async function generateAndDownloadCertificate({
 
   const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-  // 3. Embed and draw the PNG template as full-page background
-  const templateImage = await pdfDoc.embedPng(templateBytes);
+  // 3. Detect PNG vs JPEG/JPG and embed template image
+  const header = new Uint8Array(templateBytes.slice(0, 4));
+  const isPng = header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47;
+
+  let templateImage;
+  try {
+    templateImage = isPng
+      ? await pdfDoc.embedPng(templateBytes)
+      : await pdfDoc.embedJpg(templateBytes);
+  } catch (embedErr) {
+    // Fallback attempt opposite format if header check failed
+    try {
+      templateImage = isPng
+        ? await pdfDoc.embedJpg(templateBytes)
+        : await pdfDoc.embedPng(templateBytes);
+    } catch {
+      throw new Error('Failed to parse certificate template image. Please ensure the template is a valid PNG or JPG file.');
+    }
+  }
+
   page.drawImage(templateImage, {
     x: 0,
     y: 0,

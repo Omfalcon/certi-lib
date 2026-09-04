@@ -106,24 +106,37 @@ export async function POST(req: NextRequest) {
   // ACTION: DELETE INDIVIDUAL PARTICIPANT
   // ----------------------------------------------------
   if (action === 'delete') {
-    const id = Number(body.id);
-    if (!id || isNaN(id)) {
-      return errorResponse('Valid participant ID is required.', 400);
+    let query = getSupabaseAdmin().from('participants').delete();
+
+    if (body.id !== undefined && body.id !== null && body.id !== '') {
+      const numId = Number(body.id);
+      if (!isNaN(numId) && numId > 0) {
+        query = query.eq('id', numId);
+      } else {
+        query = query.eq('id', body.id);
+      }
+    } else if (body.sapid) {
+      query = query.eq('sapid', sanitizeString(body.sapid).trim());
+    } else if (body.email) {
+      query = query.eq('email', sanitizeString(body.email).toLowerCase());
+    } else {
+      return errorResponse('Valid participant ID, SAP ID, or email is required for deletion.', 400);
     }
 
-    const { error } = await getSupabaseAdmin()
-      .from('participants')
-      .delete()
-      .eq('id', id);
+    const { data: deletedRows, error } = await query.select('id, name, email, sapid');
 
     if (error) {
-      console.error('[participants:delete] Error:', error.message);
-      return errorResponse('Failed to delete participant.', 500);
+      console.error('[participants:delete] Supabase Error:', error.message);
+      return errorResponse('Failed to delete participant from Supabase: ' + error.message, 500);
+    }
+
+    if (!deletedRows || deletedRows.length === 0) {
+      return errorResponse('Participant not found in Supabase database.', 404);
     }
 
     return successResponse({
-      message: 'Participant removed successfully.',
-      id,
+      message: `Participant "${deletedRows[0].name}" (${deletedRows[0].sapid}) removed successfully from Supabase.`,
+      deleted: deletedRows[0],
     });
   }
 

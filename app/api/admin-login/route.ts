@@ -30,11 +30,19 @@ export async function POST(req: NextRequest) {
     (settingsRes.data ?? []).map((s) => [s.key, s.value])
   );
 
+  let templateUrl = settings['template_url'] ?? null;
+  if (!templateUrl) {
+    const { data: urlData } = getSupabaseAdmin().storage
+      .from('certificates')
+      .getPublicUrl('certificate-template.png');
+    templateUrl = urlData?.publicUrl ?? null;
+  }
+
   return successResponse({
     authenticated: true,
     participantCount: participantRes.count ?? 0,
     lastUpload: settings['last_upload'] ?? null,
-    templateUrl: settings['template_url'] ?? null,
+    templateUrl,
   });
 }
 
