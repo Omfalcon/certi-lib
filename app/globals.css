@@ -1,26 +1,638 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Great+Vibes&display=swap');
 @import "tailwindcss";
 
+/* ============================================
+   DESIGN TOKENS
+   ============================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-inter: 'Inter', sans-serif;
+  --font-great-vibes: 'Great Vibes', cursive;
+
+  /* Workshop on Advanced LaTeX — Deep Royal Violet & Gold Palette */
+  --color-navy: #0e051b;
+  --color-navy-mid: #170a2c;
+  --color-purple-dark: #240046;
+  --color-purple: #3c096c;
+  --color-purple-mid: #5a189a;
+  --color-purple-light: #7b2cbf;
+  --color-accent: #9d4edd;
+  --color-accent-glow: rgba(157, 78, 221, 0.35);
+  --color-gold: #ffb703;
+  --color-gold-light: #ffc300;
+  --color-gold-glow: rgba(255, 183, 3, 0.35);
+  --color-gold-dark: #fb8500;
+  --color-white: #ffffff;
+  --color-white-soft: rgba(255, 255, 255, 0.92);
+  --color-white-muted: rgba(255, 255, 255, 0.65);
+  --color-white-dim: rgba(255, 255, 255, 0.08);
+  --color-white-border: rgba(255, 255, 255, 0.12);
+  --color-error: #ff5252;
+  --color-success: #00e676;
+  --color-warning: #ffb703;
+
+  /* Gradients */
+  --gradient-bg: linear-gradient(140deg, #0e051b 0%, #1a0833 45%, #2d0b54 100%);
+  --gradient-card: linear-gradient(155deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  --gradient-btn: linear-gradient(135deg, #7b2cbf 0%, #9d4edd 50%, #c77dff 100%);
+  --gradient-btn-hover: linear-gradient(135deg, #9d4edd 0%, #b5179e 100%);
+  --gradient-gold: linear-gradient(135deg, #ffc300, #ffb703, #fb8500);
+
+  /* Shadows */
+  --shadow-card: 0 16px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  --shadow-btn: 0 4px 24px rgba(157, 78, 221, 0.45);
+  --shadow-gold: 0 4px 20px rgba(255, 183, 3, 0.35);
+  --shadow-input: 0 0 0 2px rgba(157, 78, 221, 0.45);
+
+  /* Border Radius */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ============================================
+   GLOBAL RESET & BASE
+   ============================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter);
+  background: var(--gradient-bg);
+  min-height: 100vh;
+  color: var(--color-white);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================
+   LAYOUT
+   ============================================ */
+.page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background blobs */
+.page-wrapper::before,
+.page-wrapper::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: 0;
+  pointer-events: none;
+  animation: blobFloat 8s ease-in-out infinite alternate;
+}
+
+.page-wrapper::before {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(123, 44, 191, 0.25), transparent);
+  top: -200px;
+  right: -200px;
+}
+
+.page-wrapper::after {
+  width: 550px;
+  height: 550px;
+  background: radial-gradient(circle, rgba(255, 183, 3, 0.12), transparent);
+  bottom: -150px;
+  left: -150px;
+  animation-delay: -4s;
+}
+
+@keyframes blobFloat {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(30px, -30px) scale(1.05); }
+}
+
+.page-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 540px;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+.site-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.site-header .logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.event-badge,
+.ieee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 183, 3, 0.35);
+  border-radius: var(--radius-full);
+  padding: 0.4rem 1.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--color-gold);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.event-badge .dot,
+.ieee-badge .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-gold);
+  box-shadow: 0 0 8px var(--color-gold);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.site-title {
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+  font-weight: 800;
+  color: var(--color-white);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.site-title span {
+  background: linear-gradient(135deg, #c77dff 0%, #ffb703 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.site-subtitle {
+  margin-top: 0.5rem;
+  font-size: 1rem;
+  color: var(--color-white-soft);
+  font-weight: 500;
+}
+
+.event-tagline {
+  display: inline-block;
+  background: linear-gradient(90deg, rgba(255, 183, 3, 0.12), rgba(157, 78, 221, 0.15));
+  border: 1px solid rgba(255, 183, 3, 0.3);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 1.1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-gold-light);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  margin-top: 0.75rem;
+}
+
+.event-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-white-border);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--color-white-soft);
+}
+
+/* ============================================
+   CERTIFICATE PREVIEW
+   ============================================ */
+.cert-preview {
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.1);
+  margin-bottom: 2rem;
+  position: relative;
+  transform: perspective(1000px) rotateX(2deg);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cert-preview:hover {
+  transform: perspective(1000px) rotateX(0deg) translateY(-4px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 176, 255, 0.3);
+}
+
+.cert-preview img {
+  width: 100%;
+  display: block;
+}
+
+.cert-preview-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(10, 22, 40, 0.3), transparent);
+  pointer-events: none;
+}
+
+/* ============================================
+   CARD
+   ============================================ */
+.card {
+  background: var(--gradient-card);
+  border: 1px solid var(--color-white-border);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-card);
+  width: 100%;
+}
+
+.card-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--color-white);
+  margin-bottom: 0.35rem;
+}
+
+.card-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-white-muted);
+  margin-bottom: 1.75rem;
+  line-height: 1.5;
+}
+
+/* ============================================
+   FORM ELEMENTS
+   ============================================ */
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-white-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-white-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-white);
+  font-family: var(--font-inter);
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  outline: none;
+}
+
+.form-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-input);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.form-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-inter);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.btn:hover::after {
+  opacity: 1;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--gradient-btn);
+  color: white;
+  box-shadow: var(--shadow-btn);
+  width: 100%;
+}
+
+.btn-primary:hover {
+  background: var(--gradient-btn-hover);
+  box-shadow: 0 6px 28px rgba(157, 78, 221, 0.55);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-white);
+  border: 1px solid var(--color-white-border);
+  width: 100%;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn-danger {
+  background: rgba(255, 82, 82, 0.15);
+  color: var(--color-error);
+  border: 1px solid rgba(255, 82, 82, 0.3);
+  width: 100%;
+}
+
+.btn-danger:hover {
+  background: rgba(255, 82, 82, 0.25);
+}
+
+/* ============================================
+   ALERTS
+   ============================================ */
+.alert {
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.5;
+}
+
+.alert-error {
+  background: rgba(255, 82, 82, 0.12);
+  border: 1px solid rgba(255, 82, 82, 0.3);
+  color: #ff8a80;
+}
+
+.alert-success {
+  background: rgba(0, 230, 118, 0.1);
+  border: 1px solid rgba(0, 230, 118, 0.3);
+  color: #69f0ae;
+}
+
+.alert-info {
+  background: rgba(157, 78, 221, 0.12);
+  border: 1px solid rgba(157, 78, 221, 0.3);
+  color: #e0aaff;
+}
+
+/* ============================================
+   LOADING SPINNER
+   ============================================ */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   FILE UPLOAD
+   ============================================ */
+.file-upload-area {
+  border: 2px dashed var(--color-white-border);
+  border-radius: var(--radius-md);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+
+.file-upload-area:hover,
+.file-upload-area.drag-over {
+  border-color: var(--color-accent);
+  background: rgba(0, 176, 255, 0.05);
+}
+
+.file-upload-area input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.file-upload-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.file-upload-text {
+  font-size: 0.875rem;
+  color: var(--color-white-muted);
+}
+
+.file-upload-text strong {
+  color: var(--color-accent);
+}
+
+.file-name {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* ============================================
+   DIVIDER
+   ============================================ */
+.divider {
+  height: 1px;
+  background: var(--color-white-border);
+  margin: 1.5rem 0;
+}
+
+/* ============================================
+   STATS CHIP
+   ============================================ */
+.stats-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.stat-chip {
+  flex: 1;
+  min-width: 100px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-white-border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+.stat-chip .stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.stat-chip .stat-label {
+  font-size: 0.7rem;
+  color: var(--color-white-muted);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ============================================
+   DOWNLOAD SUCCESS
+   ============================================ */
+.download-success {
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+.download-success .check-icon {
+  width: 60px;
+  height: 60px;
+  background: rgba(0, 230, 118, 0.15);
+  border: 2px solid rgba(0, 230, 118, 0.4);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 1.5rem;
+  animation: scaleIn 0.4s ease;
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.download-success .success-name {
+  font-family: var(--font-great-vibes);
+  font-size: 2rem;
+  color: var(--color-accent);
+  margin-bottom: 0.5rem;
+}
+
+.download-success .success-text {
+  font-size: 0.9rem;
+  color: var(--color-white-muted);
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+.site-footer {
+  text-align: center;
+  margin-top: 2.5rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.site-footer a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+/* ============================================
+   ADMIN SECTION TITLES
+   ============================================ */
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-accent);
+  margin-bottom: 0.75rem;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 480px) {
+  .card {
+    padding: 1.5rem;
+  }
+  .page-wrapper {
+    padding: 1.5rem 1rem;
+  }
 }
