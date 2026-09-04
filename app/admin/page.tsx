@@ -66,13 +66,13 @@ export default function AdminPage() {
   /* -----------------------------------------------
      Fetch Participants
   ----------------------------------------------- */
-  const fetchParticipants = useCallback(async (pwd: string) => {
+  const fetchParticipants = useCallback(async () => {
     setLoadingParticipants(true);
     try {
       const res = await fetch('/api/participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pwd, action: 'list' }),
+        body: JSON.stringify({ action: 'list' }),
       });
       const data = await res.json();
       if (res.ok && Array.isArray(data.participants)) {
@@ -87,63 +87,77 @@ export default function AdminPage() {
   }, []);
 
   /* -----------------------------------------------
-     Authentication & Session Persistence
+     Authentication & Session Check
   ----------------------------------------------- */
-  const authenticate = useCallback(
-    async (pwd: string) => {
-      setAuthState('loading');
-      setAuthError('');
-
-      try {
-        const res = await fetch('/api/admin-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pwd }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          setAuthState('error');
-          setAuthError(data.error ?? 'Invalid credentials.');
-          sessionStorage.removeItem('admin_token');
-          return;
-        }
-
-        setPassword(pwd);
-        sessionStorage.setItem('admin_token', pwd);
-        setDashboard({
-          participantCount: data.participantCount,
-          lastUpload: data.lastUpload,
-          templateUrl: data.templateUrl,
-        });
-        setAuthState('authenticated');
-
-        // Fetch participant records
-        fetchParticipants(pwd);
-      } catch {
-        setAuthState('error');
-        setAuthError('Network error. Please try again.');
-      }
-    },
-    [fetchParticipants]
-  );
-
-  // Restore session from sessionStorage on initial mount or refresh
+  // Restore session via secure HttpOnly cookie on initial mount or refresh
   useEffect(() => {
-    const savedToken = sessionStorage.getItem('admin_token');
-    if (savedToken) {
-      authenticate(savedToken);
-    }
-  }, [authenticate]);
+    const checkSession = async () => {
+      setAuthState('loading');
+      try {
+        const res = await fetch('/api/admin-login', { method: 'GET' });
+        const data = await res.json();
+        if (res.ok && data.authenticated) {
+          setDashboard({
+            participantCount: data.participantCount,
+            lastUpload: data.lastUpload,
+            templateUrl: data.templateUrl,
+          });
+          setAuthState('authenticated');
+          fetchParticipants();
+        } else {
+          setAuthState('idle');
+        }
+      } catch {
+        setAuthState('idle');
+      }
+    };
 
-  const handleLogin = (e: React.FormEvent) => {
+    checkSession();
+  }, [fetchParticipants]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    authenticate(password);
+    setAuthState('loading');
+    setAuthError('');
+
+    try {
+      const res = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.authenticated) {
+        setAuthState('error');
+        setAuthError(data.error ?? 'Invalid credentials.');
+        return;
+      }
+
+      // Clear the password input from memory for security
+      setPassword('');
+      setDashboard({
+        participantCount: data.participantCount,
+        lastUpload: data.lastUpload,
+        templateUrl: data.templateUrl,
+      });
+      setAuthState('authenticated');
+
+      // Fetch participant records
+      fetchParticipants();
+    } catch {
+      setAuthState('error');
+      setAuthError('Network error. Please try again.');
+    }
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('admin_token');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/admin-login?action=logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout notice:', err);
+    }
     setPassword('');
     setDashboard(null);
     setParticipants([]);
@@ -169,7 +183,6 @@ export default function AdminPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          password,
           action: 'add',
           name: newName.trim(),
           email: newEmail.trim(),
@@ -190,7 +203,7 @@ export default function AdminPage() {
       setNewSapid('');
 
       // Refresh list
-      fetchParticipants(password);
+      fetchParticipants();
     } catch {
       setAddError('Network error. Failed to add participant.');
     } finally {
@@ -205,14 +218,12 @@ export default function AdminPage() {
     if (!confirm(`Are you sure you want to remove "${name}" (${sapid || 'ID ' + id}) from Supabase?`)) return;
 
     setDeletingId(id);
-    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
 
     try {
       const res = await fetch('/api/participants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          password: token,
           action: 'delete',
           id,
           sapid,
@@ -228,7 +239,7 @@ export default function AdminPage() {
       }
 
       // Re-fetch all participants directly from Supabase to guarantee UI sync
-      await fetchParticipants(token);
+      await fetchParticipants();
     } catch {
       alert('Network error. Failed to delete participant.');
     } finally {
@@ -258,10 +269,8 @@ export default function AdminPage() {
     setExcelState('uploading');
     setExcelMessage('');
 
-    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     const formData = new FormData();
     formData.append('file', excelFile);
-    formData.append('password', token);
 
     try {
       const res = await fetch('/api/upload-excel', {
@@ -285,7 +294,7 @@ export default function AdminPage() {
       setExcelFile(null);
 
       // Refresh participant directory from Supabase
-      fetchParticipants(token);
+      fetchParticipants();
     } catch {
       setExcelState('error');
       setExcelMessage('Network error. Please try again.');
@@ -300,10 +309,8 @@ export default function AdminPage() {
     setTemplateState('uploading');
     setTemplateMessage('');
 
-    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     const formData = new FormData();
     formData.append('file', templateFile);
-    formData.append('password', token);
 
     try {
       const res = await fetch('/api/upload-template', {
@@ -336,13 +343,11 @@ export default function AdminPage() {
     setClearState('uploading');
     setClearMessage('');
 
-    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
-
     try {
       const res = await fetch('/api/clear-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: token }),
+        body: JSON.stringify({}),
       });
 
       const data = await res.json();
@@ -682,7 +687,7 @@ export default function AdminPage() {
               </button>
 
               <button
-                onClick={() => fetchParticipants(password)}
+                onClick={() => fetchParticipants()}
                 disabled={loadingParticipants}
                 title="Refresh Participant List"
                 className="p-2 rounded-xl bg-slate-900/80 border border-slate-700/80 text-slate-300 hover:text-white hover:border-slate-600 transition cursor-pointer"

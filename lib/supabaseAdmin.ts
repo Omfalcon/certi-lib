@@ -5,11 +5,15 @@ let _supabaseAdmin: SupabaseClient | null = null;
 /**
  * Admin Supabase client — uses the service role key.
  * NEVER expose this to the browser. Only use in API routes (server-side).
- * Bypasses RLS for admin operations.
+ * Bypasses RLS strictly for authorized backend operations.
  *
  * Lazily instantiated so Next.js build does not fail when env vars are not set.
  */
 export function getSupabaseAdmin(): SupabaseClient {
+  if (typeof window !== 'undefined') {
+    throw new Error('FATAL SECURITY ERROR: getSupabaseAdmin() cannot be called client-side.');
+  }
+
   if (_supabaseAdmin) return _supabaseAdmin;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

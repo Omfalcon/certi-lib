@@ -1,22 +1,30 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
-import { sanitizeString, verifyAdminPassword, errorResponse, successResponse } from '@/lib/validation';
+import { adminRateLimiter, getClientIp } from '@/lib/rateLimiter';
+import { sanitizeString, verifyAdminRequest, errorResponse, successResponse } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  let body: unknown;
+  // 1. Rate limiting
+  const ip = getClientIp(req);
+  try {
+    await adminRateLimiter.consume(ip);
+  } catch {
+    return errorResponse('Too many requests. Please wait a moment.', 429);
+  }
+
+  let body: Record<string, unknown> = {};
   try {
     body = await req.json();
   } catch {
-    return errorResponse('Invalid request body.', 400);
+    // Body is optional if session cookie is present
   }
 
-  const raw = body as Record<string, unknown>;
-  const password = sanitizeString(raw.password as string);
+  const password = sanitizeString(body.password as string);
 
-  if (!verifyAdminPassword(password)) {
-    return errorResponse('Unauthorized.', 401);
+  if (!verifyAdminRequest(req, password)) {
+    return errorResponse('Unauthorized. Invalid or expired admin session.', 401);
   }
 
   // Delete all participants

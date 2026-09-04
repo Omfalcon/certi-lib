@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import * as XLSX from 'xlsx';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { adminRateLimiter, getClientIp } from '@/lib/rateLimiter';
-import { sanitizeString, verifyAdminPassword, errorResponse, successResponse } from '@/lib/validation';
+import { sanitizeString, verifyAdminRequest, errorResponse, successResponse } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 
@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
     return errorResponse('Invalid form data.', 400);
   }
 
-  // 3. Verify admin password
+  // 3. Verify admin session cookie (or fallback password from formData)
   const password = sanitizeString(formData.get('password') as string);
-  if (!verifyAdminPassword(password)) {
-    return errorResponse('Unauthorized.', 401);
+  if (!verifyAdminRequest(req, password)) {
+    return errorResponse('Unauthorized. Invalid or expired admin session.', 401);
   }
 
   // 4. Get the file

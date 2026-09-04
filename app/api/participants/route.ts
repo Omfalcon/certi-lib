@@ -4,7 +4,7 @@ import { adminRateLimiter, getClientIp } from '@/lib/rateLimiter';
 import {
   sanitizeString,
   isValidEmail,
-  verifyAdminPassword,
+  verifyAdminRequest,
   errorResponse,
   successResponse,
 } from '@/lib/validation';
@@ -37,10 +37,9 @@ export async function POST(req: NextRequest) {
     return errorResponse('Invalid JSON request body.', 400);
   }
 
-  // 3. Admin Authentication
-  const password = sanitizeString(body.password ?? '');
-  if (!verifyAdminPassword(password)) {
-    return errorResponse('Invalid credentials.', 401);
+  // 3. Admin Authentication via HttpOnly session cookie or fallback password
+  if (!verifyAdminRequest(req, body.password)) {
+    return errorResponse('Unauthorized. Invalid or expired admin session.', 401);
   }
 
   const action = body.action ?? 'list';
