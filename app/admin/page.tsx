@@ -457,39 +457,37 @@ export default function AdminPage() {
   return (
     <div className="page-wrapper" style={{ alignItems: 'stretch' }}>
       <div className="admin-container">
-        {/* Wide Admin Topbar */}
-        <header className="admin-topbar">
-          <div className="admin-topbar-info">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <span className="event-badge">
-                <span className="dot" />
-                Admin Console
-              </span>
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-white-muted)' }}>
-                Dr. S. J. Chopra Centre for Learning · UPES
-              </span>
+        <header className="admin-topbar" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '1rem' }}>
+            <span className="event-badge">
+              <span className="dot" />
+              Admin Console
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <a href="/" target="_blank" rel="noopener noreferrer" className="btn-nav btn-nav-outline">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+                </svg>
+                Portal
+              </a>
+              <button className="btn-nav btn-nav-danger" onClick={handleLogout} title="Sign out of Admin Console">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                </svg>
+                Lock
+              </button>
             </div>
-            <h1 className="site-title" style={{ textAlign: 'left', marginTop: '0.35rem' }}>
-              Certificate <span>Admin Control Center</span>
+          </div>
+          <div>
+            <span style={{ fontSize: '0.8rem', color: 'var(--color-white-muted)' }}>
+              Dr. S. J. Chopra Centre · UPES
+            </span>
+            <h1 className="site-title" style={{ textAlign: 'left', marginTop: '0.25rem', fontSize: '1.75rem' }}>
+              Certificate <span>Admin Control</span>
             </h1>
-            <p style={{ fontSize: '0.9rem', color: 'var(--color-white-muted)' }}>
+            <p style={{ fontSize: '0.9rem', color: 'var(--color-white-muted)', marginTop: '0.25rem' }}>
               Workshop on Advanced LaTeX for Research Writing and Publication
             </p>
-          </div>
-
-          <div className="admin-topbar-actions">
-            <a href="/" target="_blank" rel="noopener noreferrer" className="btn-nav btn-nav-outline">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
-              </svg>
-              Student Portal
-            </a>
-            <button className="btn-nav btn-nav-danger" onClick={handleLogout} title="Sign out of Admin Console">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-              </svg>
-              Lock Console
-            </button>
           </div>
         </header>
 
@@ -589,10 +587,15 @@ export default function AdminPage() {
         <div className="card" style={{ marginBottom: '1.75rem' }}>
           <div className="directory-controls">
             <div>
-              <div className="section-title">Participant Directory</div>
-              <h2 className="card-title">Attendee Records ({participants.length})</h2>
-              <p className="card-subtitle" style={{ marginBottom: 0 }}>
-                View, search, add individual records, or delete participants directly.
+              <div className="section-title">DIRECTORY</div>
+              <h2 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.4rem' }}>
+                Attendee Records <span style={{ background: '#E2E8F0', color: '#334155', fontSize: '0.8rem', padding: '0.1rem 0.5rem', borderRadius: '999px' }}>{participants.length}</span>
+              </h2>
+              <p className="card-subtitle hidden md:block" style={{ marginBottom: 0 }}>
+                View, search, add individual records, or manage certificate status.
+              </p>
+              <p className="card-subtitle block md:hidden" style={{ marginBottom: 0, marginTop: '0.5rem' }}>
+                View, search, add individual records, or manage certificate status.
               </p>
             </div>
 
@@ -602,11 +605,11 @@ export default function AdminPage() {
                 onClick={() => setShowAddForm((v) => !v)}
                 style={{ padding: '0.55rem 0.95rem' }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                {showAddForm ? 'Hide Form' : 'Add Participant'}
+                {showAddForm ? 'Hide' : 'Add'}
               </button>
 
               <button
@@ -719,8 +722,8 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Table Container */}
-          <div className="table-wrapper">
+          {/* Desktop Table View */}
+          <div className="table-wrapper hidden md:block">
             <table className="data-table">
               <thead>
                 <tr>
@@ -780,6 +783,79 @@ export default function AdminPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Card List View */}
+          <div className="block md:hidden">
+            {filteredParticipants.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {filteredParticipants.map((p, idx) => (
+                  <div key={p.id} style={{ border: '1px solid #E2E8F0', borderRadius: '12px', padding: '1rem', background: '#FFFFFF' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                        <div style={{ width: '36px', height: '36px', background: '#0F172A', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 600 }}>
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#0F172A', fontSize: '0.95rem' }}>{p.name}</div>
+                          <div style={{ color: '#64748B', fontSize: '0.8rem' }}>{p.email}</div>
+                        </div>
+                      </div>
+                      <div style={{ background: '#FFFBEB', color: '#B45309', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, border: '1px solid #FDE68A' }}>
+                        {p.sapid}
+                      </div>
+                    </div>
+                    
+                    <div style={{ height: '1px', background: '#F1F5F9', margin: '0 -1rem 1rem -1rem' }} />
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#059669', fontWeight: 500 }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981' }} />
+                        Ready to Issue
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button style={{ padding: '0.35rem 0.75rem', border: '1px solid #CBD5E1', borderRadius: '6px', fontSize: '0.75rem', color: '#475569', background: 'transparent' }}>
+                          Preview
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteParticipant(p.id, p.name, p.sapid, p.email)}
+                          style={{ padding: '0.35rem 0.75rem', border: '1px solid #FECACA', borderRadius: '6px', fontSize: '0.75rem', color: '#DC2626', background: '#FEF2F2', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--color-white-muted)', border: '1px solid #E2E8F0', borderRadius: '12px' }}>
+                {loadingParticipants
+                  ? 'Loading participant records...'
+                  : searchQuery
+                  ? `No participants found matching "${searchQuery}".`
+                  : 'No participants in database.'}
+              </div>
+            )}
+          </div>
+
+          {/* Pagination Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #F1F5F9', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ fontSize: '0.85rem', color: '#64748B' }}>
+              Showing {filteredParticipants.length} of {participants.length} participant{participants.length !== 1 && 's'}
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button style={{ padding: '0.4rem 0.85rem', background: '#F1F5F9', color: '#94A3B8', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 500 }}>
+                Prev
+              </button>
+              <button style={{ padding: '0.4rem 0.85rem', background: '#F1F5F9', color: '#94A3B8', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 500 }}>
+                Next
+              </button>
+            </div>
           </div>
         </div>
 
