@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 /* -----------------------------------------------
    Types
@@ -39,10 +39,9 @@ export default function AdminPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   /* -----------------------------------------------
-     Auth
+     Authentication & Session Persistence
   ----------------------------------------------- */
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const authenticate = useCallback(async (pwd: string) => {
     setAuthState('loading');
     setAuthError('');
 
@@ -50,7 +49,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password: pwd }),
       });
 
       const data = await res.json();
@@ -58,9 +57,12 @@ export default function AdminPage() {
       if (!res.ok) {
         setAuthState('error');
         setAuthError(data.error ?? 'Invalid credentials.');
+        sessionStorage.removeItem('admin_token');
         return;
       }
 
+      setPassword(pwd);
+      sessionStorage.setItem('admin_token', pwd);
       setDashboard({
         participantCount: data.participantCount,
         lastUpload: data.lastUpload,
@@ -71,6 +73,26 @@ export default function AdminPage() {
       setAuthState('error');
       setAuthError('Network error. Please try again.');
     }
+  }, []);
+
+  // Restore session from sessionStorage on initial mount or refresh
+  useEffect(() => {
+    const savedToken = sessionStorage.getItem('admin_token');
+    if (savedToken) {
+      authenticate(savedToken);
+    }
+  }, [authenticate]);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    authenticate(password);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_token');
+    setPassword('');
+    setDashboard(null);
+    setAuthState('idle');
   };
 
   /* -----------------------------------------------
@@ -184,13 +206,13 @@ export default function AdminPage() {
   };
 
   /* -----------------------------------------------
-     Render: Password Gate
+     Render: Password Gate (Unauthenticated)
   ----------------------------------------------- */
   if (authState !== 'authenticated') {
     return (
       <div className="page-wrapper">
-        <div className="page-content">
-          <header className="site-header">
+        <div className="page-content" style={{ maxWidth: '440px' }}>
+          <header className="site-header" style={{ marginBottom: '1.75rem' }}>
             <div className="logo-row">
               <span className="event-badge">
                 <span className="dot" />
@@ -198,25 +220,27 @@ export default function AdminPage() {
               </span>
             </div>
             <h1 className="site-title">
-              Certificate <span>Admin</span>
+              Certificate <span>Console</span>
             </h1>
-            <p className="site-subtitle">Workshop on Advanced LaTeX — Dr. S. J. Chopra Centre for Learning, UPES</p>
+            <p className="site-subtitle">Dr. S. J. Chopra Centre for Learning · UPES</p>
           </header>
 
           <div className="card">
-            <h2 className="card-title">🔐 Secure Login</h2>
-            <p className="card-subtitle">Enter your admin password to access the panel.</p>
+            <h2 className="card-title">Admin Authentication</h2>
+            <p className="card-subtitle">
+              Enter the administrator security key to access database controls and asset managers.
+            </p>
 
             <form onSubmit={handleLogin}>
               <div className="form-group">
                 <label className="form-label" htmlFor="admin-password">
-                  Admin Password
+                  Security Key
                 </label>
                 <input
                   id="admin-password"
                   className="form-input"
                   type="password"
-                  placeholder="Enter admin password"
+                  placeholder="Enter security key"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={authState === 'loading'}
@@ -227,7 +251,11 @@ export default function AdminPage() {
 
               {authState === 'error' && (
                 <div className="alert alert-error" role="alert">
-                  <span>⚠</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
                   {authError}
                 </div>
               )}
@@ -242,19 +270,19 @@ export default function AdminPage() {
                   {authState === 'loading' ? (
                     <>
                       <span className="spinner" />
-                      Authenticating...
+                      Verifying...
                     </>
                   ) : (
-                    'Login'
+                    'Authenticate'
                   )}
                 </button>
               </div>
             </form>
           </div>
 
-          <footer className="site-footer">
+          <footer className="site-footer" style={{ marginTop: '2rem' }}>
             <p>
-              ← <a href="/">Back to student portal</a>
+              <a href="/">← Return to Student Portal</a>
             </p>
           </footer>
         </div>
@@ -263,7 +291,7 @@ export default function AdminPage() {
   }
 
   /* -----------------------------------------------
-     Render: Authenticated Dashboard
+     Render: Authenticated Wide Dashboard
   ----------------------------------------------- */
   return (
     <div className="page-wrapper" style={{ alignItems: 'stretch' }}>
@@ -290,22 +318,18 @@ export default function AdminPage() {
 
           <div className="admin-topbar-actions">
             <a href="/" target="_blank" rel="noopener noreferrer" className="btn-nav btn-nav-outline">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
               </svg>
               Student Portal
             </a>
             <button
               className="btn-nav btn-nav-danger"
-              onClick={() => {
-                setAuthState('idle');
-                setPassword('');
-                setDashboard(null);
-              }}
+              onClick={handleLogout}
               title="Sign out of Admin Console"
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
               </svg>
               Lock Console
             </button>
@@ -317,7 +341,14 @@ export default function AdminPage() {
           <div className="stat-card">
             <div className="stat-card-header">
               <span className="stat-card-label">Total Participants</span>
-              <span className="stat-card-icon">👥</span>
+              <span className="stat-card-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </span>
             </div>
             <div className="stat-card-value">{dashboard?.participantCount ?? 0}</div>
             <div className="stat-card-sub">
@@ -328,7 +359,13 @@ export default function AdminPage() {
           <div className="stat-card">
             <div className="stat-card-header">
               <span className="stat-card-label">Certificate Template</span>
-              <span className="stat-card-icon">🖼️</span>
+              <span className="stat-card-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="m21 15-5-5L5 21" />
+                </svg>
+              </span>
             </div>
             <div
               className="stat-card-value"
@@ -337,7 +374,7 @@ export default function AdminPage() {
                 color: dashboard?.templateUrl ? 'var(--color-success)' : 'var(--color-gold)',
               }}
             >
-              {dashboard?.templateUrl ? '✓ Ready' : 'Default Asset'}
+              {dashboard?.templateUrl ? 'Active' : 'Default Asset'}
             </div>
             <div className="stat-card-sub">
               {dashboard?.templateUrl ? 'Custom uploaded template' : 'Using public template'}
@@ -347,7 +384,12 @@ export default function AdminPage() {
           <div className="stat-card">
             <div className="stat-card-header">
               <span className="stat-card-label">Last Database Sync</span>
-              <span className="stat-card-icon">⏱️</span>
+              <span className="stat-card-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </span>
             </div>
             <div className="stat-card-value" style={{ fontSize: '1.25rem' }}>
               {dashboard?.lastUpload
@@ -370,14 +412,18 @@ export default function AdminPage() {
 
           <div className="stat-card">
             <div className="stat-card-header">
-              <span className="stat-card-label">System Health</span>
-              <span className="stat-card-icon">🛡️</span>
+              <span className="stat-card-label">System Architecture</span>
+              <span className="stat-card-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </span>
             </div>
             <div
               className="stat-card-value"
               style={{ fontSize: '1.35rem', color: 'var(--color-gold-light)' }}
             >
-              Serverless 100%
+              Serverless
             </div>
             <div className="stat-card-sub">
               <span style={{ color: 'var(--color-success)' }}>✓</span> RLS &amp; Rate Limiter Active
@@ -390,7 +436,7 @@ export default function AdminPage() {
           {/* Left Column: Participant Management & Excel Ingestion */}
           <div className="admin-col">
             <div className="card">
-              <div className="section-title">📊 Participant Data Management</div>
+              <div className="section-title">Participant Management</div>
               <h2 className="card-title">Bulk Excel Ingestion</h2>
               <p className="card-subtitle">
                 Upload your participant Excel sheet (.xlsx, .xls) to sync student verification records. Matching is
@@ -407,7 +453,10 @@ export default function AdminPage() {
                   download="participant_template.xlsx"
                   className="sample-btn"
                 >
-                  📥 Download Excel Template (.xlsx)
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                  </svg>
+                  Download Template (.xlsx)
                 </a>
               </div>
 
@@ -419,7 +468,21 @@ export default function AdminPage() {
                   accept=".xlsx,.xls"
                   onChange={(e) => setExcelFile(e.target.files?.[0] ?? null)}
                 />
-                <div className="file-upload-icon">📄</div>
+                <svg
+                  width="36"
+                  height="36"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  style={{ margin: '0 auto 0.75rem', display: 'block', color: 'var(--color-gold)' }}
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
                 <p className="file-upload-text">
                   <strong>Click to choose file</strong> or drag and drop here
                 </p>
@@ -428,7 +491,9 @@ export default function AdminPage() {
                 </p>
                 {excelFile && (
                   <div className="file-name">
-                    <span>✓</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
                     <strong>{excelFile.name}</strong> ({(excelFile.size / 1024).toFixed(1)} KB)
                   </div>
                 )}
@@ -439,7 +504,17 @@ export default function AdminPage() {
                   className={`alert ${excelState === 'error' ? 'alert-error' : 'alert-success'}`}
                   role="alert"
                 >
-                  <span>{excelState === 'error' ? '⚠' : '✓'}</span>
+                  {excelState === 'error' ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                   {excelMessage}
                 </div>
               )}
@@ -458,7 +533,7 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                         <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                       </svg>
                       Upload &amp; Sync Participants
@@ -469,7 +544,11 @@ export default function AdminPage() {
 
               {/* Format Reference Box */}
               <div className="alert alert-info" style={{ marginTop: '1.25rem' }}>
-                <span>ℹ</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ flexShrink: 0 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
                 <div style={{ fontSize: '0.82rem', lineHeight: 1.6 }}>
                   <strong>Required Header Columns:</strong>
                   <div style={{ marginTop: '0.35rem', fontFamily: 'monospace', color: 'var(--color-gold-light)' }}>
@@ -487,7 +566,7 @@ export default function AdminPage() {
           <div className="admin-col">
             {/* Template Card */}
             <div className="card">
-              <div className="section-title">🖼 Certificate Template</div>
+              <div className="section-title">Certificate Template</div>
               <h2 className="card-title">Certificate Design Template</h2>
               <p className="card-subtitle">
                 Upload the high-resolution certificate background image (PNG or JPG).
@@ -535,7 +614,7 @@ export default function AdminPage() {
                     color: 'var(--color-white-muted)',
                   }}
                 >
-                  ℹ Currently utilizing default asset (`/certificate-template.png`).
+                  Currently utilizing default asset (/certificate-template.png).
                 </div>
               )}
 
@@ -546,7 +625,19 @@ export default function AdminPage() {
                   accept=".png,.jpg,.jpeg,image/png,image/jpeg"
                   onChange={(e) => setTemplateFile(e.target.files?.[0] ?? null)}
                 />
-                <div className="file-upload-icon">🖼</div>
+                <svg
+                  width="36"
+                  height="36"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  style={{ margin: '0 auto 0.75rem', display: 'block', color: 'var(--color-gold)' }}
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="m21 15-5-5L5 21" />
+                </svg>
                 <p className="file-upload-text">
                   <strong>Click to browse</strong> or drag &amp; drop
                 </p>
@@ -555,7 +646,9 @@ export default function AdminPage() {
                 </p>
                 {templateFile && (
                   <div className="file-name">
-                    <span>✓</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
                     <strong>{templateFile.name}</strong> ({(templateFile.size / 1024).toFixed(1)} KB)
                   </div>
                 )}
@@ -566,7 +659,17 @@ export default function AdminPage() {
                   className={`alert ${templateState === 'error' ? 'alert-error' : 'alert-success'}`}
                   role="alert"
                 >
-                  <span>{templateState === 'error' ? '⚠' : '✓'}</span>
+                  {templateState === 'error' ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                   {templateMessage}
                 </div>
               )}
@@ -585,7 +688,7 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                         <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                       </svg>
                       Upload Template to Storage
@@ -605,7 +708,7 @@ export default function AdminPage() {
                   borderColor: 'rgba(255,82,82,0.25)',
                 }}
               >
-                ⚠ System Reset
+                System Maintenance
               </div>
               <h2 className="card-title">Danger Zone</h2>
               <p className="card-subtitle" style={{ marginBottom: '1rem' }}>
@@ -617,7 +720,17 @@ export default function AdminPage() {
                   className={`alert ${clearState === 'error' ? 'alert-error' : 'alert-success'}`}
                   role="alert"
                 >
-                  <span>{clearState === 'error' ? '⚠' : '✓'}</span>
+                  {clearState === 'error' ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                   {clearMessage}
                 </div>
               )}
@@ -628,7 +741,7 @@ export default function AdminPage() {
                   onClick={() => setShowClearConfirm(true)}
                   id="clear-data-btn"
                 >
-                  🗑 Clear All Records
+                  Clear All Records
                 </button>
               ) : (
                 <div
@@ -647,7 +760,7 @@ export default function AdminPage() {
                       fontWeight: 600,
                     }}
                   >
-                    ⚠️ Are you absolutely sure? This action is irreversible.
+                    This operation is irreversible. All participant data will be erased.
                   </p>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
