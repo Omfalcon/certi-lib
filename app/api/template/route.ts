@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import type { SavedNameRegion } from '@/lib/templateTypes';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,9 +28,30 @@ export async function GET() {
       templateUrl = urlData.publicUrl;
     }
 
+    // Saved name region (if any) for the active template. Malformed/missing
+    // value → null; the generator falls back to the legacy position.
+    let nameRegion: SavedNameRegion | null = null;
+    const { data: regionData } = await getSupabaseAdmin()
+      .from('settings')
+      .select('value')
+      .eq('key', 'template_name_region')
+      .maybeSingle();
+
+    if (regionData?.value) {
+      try {
+        const parsed = JSON.parse(regionData.value);
+        if (parsed && typeof parsed === 'object' && typeof parsed.centerY === 'number') {
+          nameRegion = parsed as SavedNameRegion;
+        }
+      } catch {
+        nameRegion = null;
+      }
+    }
+
     return NextResponse.json({
       templateUrl,
       updatedAt: data?.updated_at ?? null,
+      nameRegion,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

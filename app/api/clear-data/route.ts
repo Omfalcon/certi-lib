@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   await getSupabaseAdmin()
     .from('settings')
     .delete()
-    .in('key', ['last_upload', 'template_url']);
+    .in('key', ['last_upload', 'template_url', 'template_name_region']);
 
   // Remove from storage
   await getSupabaseAdmin().storage

@@ -1,6 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import { analyzeTemplateImage, type OCRProgress } from '@/lib/ocr';
+import {
+  detectNameRegion,
+  scoreGapCandidates,
+  LOW_CONFIDENCE_THRESHOLD,
+} from '@/lib/namePositionDetector';
+import type { SavedNameRegion, NameRegion, GapCandidate, OCRLine } from '@/lib/templateTypes';
 
 /* -----------------------------------------------
    Types
@@ -12,6 +20,7 @@ interface DashboardData {
   participantCount: number;
   lastUpload: string | null;
   templateUrl: string | null;
+  nameRegion: SavedNameRegion | null;
 }
 
 interface ParticipantItem {
@@ -57,6 +66,19 @@ export default function AdminPage() {
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [templateState, setTemplateState] = useState<UploadState>('idle');
   const [templateMessage, setTemplateMessage] = useState('');
+
+  // Name-position detection state
+  const [analysisState, setAnalysisState] = useState<'idle' | 'analyzing' | 'detected' | 'manual' | 'error'>('idle');
+  const [analysisProgress, setAnalysisProgress] = useState<OCRProgress | null>(null);
+  const [detectedRegion, setDetectedRegion] = useState<NameRegion | null>(null);
+  const [detectedLines, setDetectedLines] = useState<OCRLine[]>([]);
+  const [gapCandidates, setGapCandidates] = useState<GapCandidate[]>([]);
+  const [analysisImage, setAnalysisImage] = useState<{ width: number; height: number } | null>(null);
+  const [analysisError, setAnalysisError] = useState('');
+  const [manualX, setManualX] = useState('50');
+  const [manualY, setManualY] = useState('45.5');
+  const [manualFallback, setManualFallback] = useState(false);
+  const [isSavingRegion, setIsSavingRegion] = useState(false);
 
   // Clear state
   const [clearState, setClearState] = useState<UploadState>('idle');
@@ -116,7 +138,15 @@ export default function AdminPage() {
           participantCount: data.participantCount,
           lastUpload: data.lastUpload,
           templateUrl: data.templateUrl,
+          nameRegion: data.nameRegion ?? null,
         });
+        setAnalysisState('idle');
+        setAnalysisError('');
+        setAnalysisProgress(null);
+        setDetectedRegion(null);
+        setDetectedLines([]);
+        setGapCandidates([]);
+        setAnalysisImage(null);
         setAuthState('authenticated');
 
         // Fetch participant records
@@ -133,6 +163,8 @@ export default function AdminPage() {
   useEffect(() => {
     const savedToken = sessionStorage.getItem('admin_token');
     if (savedToken) {
+      // Session restore must revalidate the stashed token on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       authenticate(savedToken);
     }
   }, [authenticate]);
@@ -147,6 +179,13 @@ export default function AdminPage() {
     setPassword('');
     setDashboard(null);
     setParticipants([]);
+    setAnalysisState('idle');
+    setAnalysisError('');
+    setAnalysisProgress(null);
+    setDetectedRegion(null);
+    setDetectedLines([]);
+    setGapCandidates([]);
+    setAnalysisImage(null);
     setAuthState('idle');
   };
 
@@ -293,16 +332,103 @@ export default function AdminPage() {
   };
 
   /* -----------------------------------------------
-     Template Upload
+     Name-Position Detection (client-side OCR)
   ----------------------------------------------- */
+  const runDetection = async (file: Blob) => {
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
+    setAnalysisState('analyzing');
+    setAnalysisError('');
+    setAnalysisProgress({ status: 'Starting OCR engine...', progress: 0 });
+    setDetectedRegion(null);
+    setGapCandidates([]);
+    setDetectedLines([]);
+    setAnalysisImage(null);
+
+    try {
+      const result = await analyzeTemplateImage(file, (p) => setAnalysisProgress(p));
+      const candidates = scoreGapCandidates(result.lines, result.imageWidth, result.imageHeight);
+      const region = detectNameRegion(result.lines, result.imageWidth, result.imageHeight);
+
+      setDetectedLines(result.lines);
+      setAnalysisImage({ width: result.imageWidth, height: result.imageHeight });
+      setGapCandidates(candidates.slice(0, 5));
+
+      // Save API rejects centerY outside [0.05, 0.95] — treat as not-confident
+      const centerYNorm = region ? region.centerY / result.imageHeight : 0;
+      if (!region || centerYNorm < 0.05 || centerYNorm > 0.95) {
+        setAnalysisState('manual');
+        setManualFallback(true);
+        setAnalysisError('');
+        const saved = dashboard?.nameRegion;
+        setManualX(((saved?.centerX ?? 0.5) * 100).toFixed(1));
+        setManualY(((saved?.centerY ?? 0.455) * 100).toFixed(1));
+        return;
+      }
+
+      setDetectedRegion(region);
+
+      const best = candidates[0];
+      const gapFrac = best.gapHeight / result.imageHeight;
+      const savedRegion: SavedNameRegion = {
+        version: 1,
+        method: 'auto',
+        centerX: region.centerX / result.imageWidth,
+        centerY: centerYNorm,
+        gapHeight: gapFrac > 0 && gapFrac <= 1 ? gapFrac : null,
+        confidence: region.confidence,
+        imageWidth: result.imageWidth,
+        imageHeight: result.imageHeight,
+        savedAt: new Date().toISOString(),
+      };
+
+      setIsSavingRegion(true);
+      try {
+        const res = await fetch('/api/save-name-region', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: token, region: savedRegion }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAnalysisState('detected');
+          setAnalysisError(
+            `Detection succeeded (${Math.round(region.confidence * 100)}% confidence), but saving failed: ${
+              data.error ?? 'unknown error'
+            }. Click "Re-analyze" to retry.`
+          );
+          return;
+        }
+        setAnalysisState('detected');
+        setAnalysisError('');
+        setDashboard((prev) => (prev ? { ...prev, nameRegion: data.region ?? savedRegion } : prev));
+      } catch {
+        setAnalysisState('detected');
+        setAnalysisError('Detection succeeded, but saving the region failed (network error). Click "Re-analyze" to retry.');
+      } finally {
+        setIsSavingRegion(false);
+      }
+    } catch (err) {
+      setAnalysisState('error');
+      setAnalysisError(err instanceof Error ? err.message : 'OCR analysis failed. Please try again.');
+    }
+  };
+
   const handleTemplateUpload = async () => {
     if (!templateFile) return;
+    const file = templateFile;
     setTemplateState('uploading');
     setTemplateMessage('');
+    setAnalysisState('idle');
+    setAnalysisError('');
+    setAnalysisProgress(null);
+    setDetectedRegion(null);
+    setDetectedLines([]);
+    setGapCandidates([]);
+    setAnalysisImage(null);
 
     const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
     const formData = new FormData();
-    formData.append('file', templateFile);
+    formData.append('file', file);
     formData.append('password', token);
 
     try {
@@ -321,13 +447,114 @@ export default function AdminPage() {
 
       setTemplateState('success');
       setTemplateMessage(data.message);
-      // Instantly update dashboard template URL from Supabase response
-      setDashboard((prev) => (prev ? { ...prev, templateUrl: data.url } : prev));
+      // Instantly update dashboard template URL; the saved region was deleted server-side
+      setDashboard((prev) => (prev ? { ...prev, templateUrl: data.url, nameRegion: null } : prev));
       setTemplateFile(null);
+      // Auto-analyze the newly uploaded template (handles its own errors; never throws)
+      await runDetection(file);
     } catch {
       setTemplateState('error');
       setTemplateMessage('Network error. Please try again.');
     }
+  };
+
+  const handleReanalyze = async () => {
+    if (!dashboard?.templateUrl || analysisState === 'analyzing') return;
+    try {
+      const res = await fetch(dashboard.templateUrl);
+      if (!res.ok) throw new Error(`Could not download the template image (HTTP ${res.status}).`);
+      const blob = await res.blob();
+      await runDetection(blob);
+    } catch (err) {
+      setAnalysisState('error');
+      setAnalysisError(err instanceof Error ? err.message : 'Could not download the template for analysis.');
+    }
+  };
+
+  const startManualPlacement = () => {
+    setAnalysisError('');
+    setManualFallback(false);
+    // Prefer the just-detected region (e.g. when auto-save failed), then the saved one
+    const base =
+      (detectedRegion && analysisImage
+        ? {
+            centerX: detectedRegion.centerX / analysisImage.width,
+            centerY: detectedRegion.centerY / analysisImage.height,
+          }
+        : null) ?? dashboard?.nameRegion;
+    setManualX(((base?.centerX ?? 0.5) * 100).toFixed(1));
+    setManualY(((base?.centerY ?? 0.455) * 100).toFixed(1));
+    setAnalysisState('manual');
+  };
+
+  const handleManualRegionSave = async () => {
+    const x = parseFloat(manualX);
+    const y = parseFloat(manualY);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 100 || y < 0 || y > 100) {
+      setAnalysisError('Enter X and Y percentages between 0 and 100.');
+      return;
+    }
+    setAnalysisError('');
+    setIsSavingRegion(true);
+    const token = password || (typeof window !== 'undefined' ? sessionStorage.getItem('admin_token') || '' : '');
+
+    try {
+      // Image dims are diagnostic-only; fall back to decoding the template URL, then 1×1
+      let imageWidth = analysisImage?.width ?? dashboard?.nameRegion?.imageWidth ?? 0;
+      let imageHeight = analysisImage?.height ?? dashboard?.nameRegion?.imageHeight ?? 0;
+      if ((!imageWidth || !imageHeight) && dashboard?.templateUrl) {
+        try {
+          const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+            img.onerror = () => reject(new Error('decode failed'));
+            img.src = dashboard.templateUrl as string;
+          });
+          imageWidth = dims.w;
+          imageHeight = dims.h;
+        } catch {
+          // fall through with 0 → 1×1 fallback below
+        }
+      }
+      const region: SavedNameRegion = {
+        version: 1,
+        method: 'manual',
+        centerX: x / 100,
+        centerY: y / 100,
+        gapHeight: null,
+        confidence: null,
+        imageWidth: imageWidth || 1,
+        imageHeight: imageHeight || 1,
+        savedAt: new Date().toISOString(),
+      };
+      const res = await fetch('/api/save-name-region', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: token, region }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAnalysisError(data.error ?? 'Failed to save name position.');
+        return;
+      }
+      setAnalysisState('idle');
+      setAnalysisError('');
+      setManualFallback(false);
+      setDashboard((prev) => (prev ? { ...prev, nameRegion: data.region ?? region } : prev));
+    } catch {
+      setAnalysisError('Network error. Failed to save name position.');
+    } finally {
+      setIsSavingRegion(false);
+    }
+  };
+
+  const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (analysisState !== 'manual') return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setManualX(Math.max(0, Math.min(100, x)).toFixed(1));
+    setManualY(Math.max(0, Math.min(100, y)).toFixed(1));
   };
 
   /* -----------------------------------------------
@@ -358,8 +585,15 @@ export default function AdminPage() {
       setClearMessage('All data cleared successfully.');
       setParticipants([]);
       setDashboard((prev) =>
-        prev ? { ...prev, participantCount: 0, lastUpload: null, templateUrl: null } : prev
+        prev ? { ...prev, participantCount: 0, lastUpload: null, templateUrl: null, nameRegion: null } : prev
       );
+      setAnalysisState('idle');
+      setAnalysisError('');
+      setAnalysisProgress(null);
+      setDetectedRegion(null);
+      setDetectedLines([]);
+      setGapCandidates([]);
+      setAnalysisImage(null);
     } catch {
       setClearState('error');
       setClearMessage('Network error. Please try again.');
@@ -443,7 +677,7 @@ export default function AdminPage() {
 
           <footer className="site-footer" style={{ marginTop: '2rem' }}>
             <p>
-              <a href="/">← Return to Student Portal</a>
+              <Link href="/">← Return to Student Portal</Link>
             </p>
           </footer>
         </div>
@@ -925,12 +1159,150 @@ export default function AdminPage() {
                     boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
                   }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={dashboard.templateUrl}
-                    alt="Active Certificate Template"
-                    style={{ width: '100%', display: 'block' }}
-                  />
+                  <div
+                    style={{ position: 'relative', cursor: analysisState === 'manual' ? 'crosshair' : 'default' }}
+                    onClick={handlePreviewClick}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={dashboard.templateUrl}
+                      alt="Active Certificate Template"
+                      style={{ width: '100%', display: 'block' }}
+                    />
+
+                    {/* Live detection overlay: blue detected region + green flanking OCR lines */}
+                    {analysisState === 'detected' && detectedRegion && analysisImage && (
+                      <>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            left: `${(detectedRegion.x / analysisImage.width) * 100}%`,
+                            top: `${(detectedRegion.y / analysisImage.height) * 100}%`,
+                            width: `${(detectedRegion.width / analysisImage.width) * 100}%`,
+                            height: `${(detectedRegion.height / analysisImage.height) * 100}%`,
+                            border: '2px solid #38bdf8',
+                            background: 'rgba(56,189,248,0.12)',
+                          }}
+                        />
+                        {(['upperLine', 'lowerLine'] as const).map((key) => {
+                          const line = detectedRegion[key];
+                          if (!line) return null;
+                          return (
+                            <div
+                              key={key}
+                              style={{
+                                position: 'absolute',
+                                pointerEvents: 'none',
+                                left: `${(line.x / analysisImage.width) * 100}%`,
+                                top: `${(line.y / analysisImage.height) * 100}%`,
+                                width: `${(line.width / analysisImage.width) * 100}%`,
+                                height: `${(line.height / analysisImage.height) * 100}%`,
+                                border: '1px solid #4ade80',
+                                background: 'rgba(74,222,128,0.15)',
+                              }}
+                            />
+                          );
+                        })}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            left: `${(detectedRegion.centerX / analysisImage.width) * 100}%`,
+                            top: `${(detectedRegion.centerY / analysisImage.height) * 100}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        >
+                          <div style={{ position: 'absolute', width: '2px', height: '28px', background: '#38bdf8', left: '-1px', top: '-14px' }} />
+                          <div style={{ position: 'absolute', width: '28px', height: '2px', background: '#38bdf8', left: '-14px', top: '-1px' }} />
+                          <div style={{ position: 'absolute', width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', left: '-3px', top: '-3px' }} />
+                        </div>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            top: '0.5rem',
+                            right: '0.5rem',
+                            background: 'rgba(0,0,0,0.65)',
+                            color: '#38bdf8',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace',
+                            padding: '0.25rem 0.55rem',
+                            borderRadius: 'var(--radius-sm)',
+                          }}
+                        >
+                          Name position · {Math.round(detectedRegion.confidence * 100)}% confidence
+                        </div>
+                      </>
+                    )}
+
+                    {/* Saved region overlay (idle/error states) */}
+                    {analysisState !== 'manual' && analysisState !== 'detected' && dashboard?.nameRegion && (
+                      <>
+                        {dashboard.nameRegion.gapHeight != null && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              pointerEvents: 'none',
+                              left: '5%',
+                              right: '5%',
+                              top: `${(dashboard.nameRegion.centerY - dashboard.nameRegion.gapHeight / 2) * 100}%`,
+                              height: `${dashboard.nameRegion.gapHeight * 100}%`,
+                              border: '2px dashed rgba(56,189,248,0.7)',
+                            }}
+                          />
+                        )}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            left: `${(dashboard.nameRegion.centerX ?? 0.5) * 100}%`,
+                            top: `${dashboard.nameRegion.centerY * 100}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        >
+                          <div style={{ position: 'absolute', width: '2px', height: '28px', background: '#38bdf8', left: '-1px', top: '-14px' }} />
+                          <div style={{ position: 'absolute', width: '28px', height: '2px', background: '#38bdf8', left: '-14px', top: '-1px' }} />
+                          <div style={{ position: 'absolute', width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', left: '-3px', top: '-3px' }} />
+                        </div>
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            top: '0.5rem',
+                            right: '0.5rem',
+                            background: 'rgba(0,0,0,0.65)',
+                            color: 'var(--color-gold)',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace',
+                            padding: '0.25rem 0.55rem',
+                            borderRadius: 'var(--radius-sm)',
+                          }}
+                        >
+                          Saved name position ({dashboard.nameRegion.method})
+                        </div>
+                      </>
+                    )}
+
+                    {/* Manual placement marker */}
+                    {analysisState === 'manual' &&
+                      Number.isFinite(parseFloat(manualX)) &&
+                      Number.isFinite(parseFloat(manualY)) && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            pointerEvents: 'none',
+                            left: `${parseFloat(manualX)}%`,
+                            top: `${parseFloat(manualY)}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        >
+                          <div style={{ position: 'absolute', width: '2px', height: '28px', background: 'var(--color-gold)', left: '-1px', top: '-14px' }} />
+                          <div style={{ position: 'absolute', width: '28px', height: '2px', background: 'var(--color-gold)', left: '-14px', top: '-1px' }} />
+                          <div style={{ position: 'absolute', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-gold)', left: '-3px', top: '-3px' }} />
+                        </div>
+                      )}
+                  </div>
                   <div
                     style={{
                       padding: '0.6rem 0.85rem',
@@ -968,6 +1340,216 @@ export default function AdminPage() {
                   }}
                 >
                   Template is managed and served directly from Supabase Storage bucket &quot;certificates&quot;.
+                </div>
+              )}
+
+              {dashboard?.templateUrl && (
+                <div
+                  style={{
+                    padding: '1rem',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid var(--color-white-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div className="section-title">Name-Position Detection</div>
+
+                  {analysisState === 'analyzing' && analysisProgress && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          fontSize: '0.8rem',
+                          marginBottom: '0.4rem',
+                        }}
+                      >
+                        <span>Running OCR analysis…</span>
+                        <span style={{ fontFamily: 'monospace' }}>
+                          {Math.round((analysisProgress.progress ?? 0) * 100)}%
+                        </span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${Math.min(100, Math.max(0, (analysisProgress.progress ?? 0) * 100))}%`,
+                            height: '100%',
+                            background: 'var(--color-gold)',
+                            borderRadius: '3px',
+                            transition: 'width 0.3s ease',
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          marginTop: '0.4rem',
+                          fontSize: '0.72rem',
+                          color: 'var(--color-white-muted)',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {analysisProgress.status}
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisState === 'error' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div className="alert alert-error">{analysisError}</div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={handleReanalyze}>
+                          Retry Detection
+                        </button>
+                        <button className="btn btn-secondary" onClick={startManualPlacement}>
+                          Set Manually
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisState === 'detected' && detectedRegion && !analysisError && (
+                    <div className="alert alert-success" style={{ marginTop: '0.75rem' }}>
+                      Name position detected automatically — confidence {Math.round(detectedRegion.confidence * 100)}%.
+                      The blue box on the preview shows where participant names will be printed.
+                    </div>
+                  )}
+
+                  {analysisState === 'detected' && analysisError && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div className="alert alert-error">{analysisError}</div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={handleReanalyze} disabled={isSavingRegion}>
+                          Re-analyze
+                        </button>
+                        <button className="btn btn-secondary" onClick={startManualPlacement}>
+                          Set Manually
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisState === 'manual' && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      {manualFallback ? (
+                        <div className="alert alert-error">
+                          Automatic name-position detection was not confident enough. Please manually set the name
+                          position.
+                        </div>
+                      ) : (
+                        <div className="alert alert-info">
+                          Manual placement: click on the preview image to set the name center point, or fine-tune
+                          with the X/Y percentage inputs below.
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: '120px' }}>
+                          <label className="form-label" style={{ fontSize: '0.725rem' }}>
+                            X (%)
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={manualX}
+                            onChange={(e) => setManualX(e.target.value)}
+                            inputMode="decimal"
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: '120px' }}>
+                          <label className="form-label" style={{ fontSize: '0.725rem' }}>
+                            Y (%)
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={manualY}
+                            onChange={(e) => setManualY(e.target.value)}
+                            inputMode="decimal"
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        <button className="btn btn-primary" onClick={handleManualRegionSave} disabled={isSavingRegion}>
+                          {isSavingRegion ? 'Saving...' : 'Save Name Position'}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            setAnalysisState('idle');
+                            setAnalysisError('');
+                            setManualFallback(false);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisState === 'idle' && !dashboard?.nameRegion && !manualFallback && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div className="alert alert-info">
+                        No name position saved for this template yet. Certificates currently print names at the
+                        legacy position. Run automatic detection, or set the position manually.
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={handleReanalyze} disabled={analysisState === 'analyzing'}>
+                          Detect Name Position
+                        </button>
+                        <button className="btn btn-secondary" onClick={startManualPlacement}>
+                          Set Manually
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {analysisState === 'idle' && dashboard?.nameRegion && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div className="alert alert-success">
+                        Saved name position:{' '}
+                        {dashboard.nameRegion.method === 'manual' ? 'manually set' : 'auto-detected'}
+                        {dashboard.nameRegion.confidence != null &&
+                          ` (${Math.round(dashboard.nameRegion.confidence * 100)}% confidence)`}
+                        . Names are printed at the crosshair shown on the preview.
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={handleReanalyze}>
+                          Re-analyze
+                        </button>
+                        <button className="btn btn-secondary" onClick={startManualPlacement}>
+                          Adjust Position
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {(detectedRegion || gapCandidates.length > 0) && (
+                    <div style={{ marginTop: '0.9rem', fontSize: '0.75rem', color: 'var(--color-white-muted)' }}>
+                      <strong style={{ color: 'var(--color-white-soft)' }}>Detection details:</strong> OCR lines:{' '}
+                      {detectedLines.length} · accepted at ≥ {Math.round(LOW_CONFIDENCE_THRESHOLD * 100)}%
+                      confidence
+                      {gapCandidates.length > 0 && (
+                        <ul
+                          style={{
+                            marginTop: '0.4rem',
+                            paddingLeft: '1.1rem',
+                            fontFamily: 'monospace',
+                            fontSize: '0.7rem',
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          {gapCandidates.map((c, i) => (
+                            <li key={i}>
+                              #{i + 1}: score {c.score.toFixed(3)} · gap{' '}
+                              {((c.gapHeight / (analysisImage?.height || 1)) * 100).toFixed(1)}% H · gap{' '}
+                              {c.scores.gap.toFixed(2)} · align {c.scores.alignment.toFixed(2)} · pos{' '}
+                              {c.scores.position.toFixed(2)} · conf {c.scores.confidence.toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1140,7 +1722,7 @@ export default function AdminPage() {
         <footer className="site-footer">
           <p>Dr. S. J. Chopra Centre for Learning · UPES · Workshop on Advanced LaTeX</p>
           <p style={{ marginTop: '0.35rem' }}>
-            <a href="/">← Return to Public Student Verification Portal</a>
+            <Link href="/">← Return to Public Student Verification Portal</Link>
           </p>
         </footer>
       </div>

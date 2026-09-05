@@ -104,6 +104,17 @@ export async function POST(req: NextRequest) {
     return errorResponse('Template uploaded to Storage but failed to update settings: ' + settingsError.message, 500);
   }
 
+  // 9. Remove any stale name-region config so it can never mismatch the new
+  //    template. The admin's post-upload analysis saves a fresh region.
+  //    Best-effort: a failed delete only warns, upload still succeeds.
+  const { error: regionDeleteError } = await getSupabaseAdmin()
+    .from('settings')
+    .delete()
+    .eq('key', 'template_name_region');
+  if (regionDeleteError) {
+    console.warn('[upload-template] Stale name-region cleanup note:', regionDeleteError.message);
+  }
+
   return successResponse({
     success: true,
     url: publicUrl,

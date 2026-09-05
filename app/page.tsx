@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { generateAndDownloadCertificate } from '@/lib/generateCertificate';
+import type { SavedNameRegion } from '@/lib/templateTypes';
 
 type Status = 'idle' | 'loading' | 'success' | 'error';
 
@@ -13,6 +14,7 @@ export default function HomePage() {
   const [message, setMessage] = useState('');
   const [verifiedName, setVerifiedName] = useState('');
   const [templateUrl, setTemplateUrl] = useState('');
+  const [nameRegion, setNameRegion] = useState<SavedNameRegion | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -47,6 +49,7 @@ export default function HomePage() {
       if (data.templateUrl) {
         setTemplateUrl(data.templateUrl);
       }
+      setNameRegion(data.nameRegion ?? null);
       setStatus('success');
     } catch {
       setStatus('error');
@@ -59,10 +62,12 @@ export default function HomePage() {
     try {
       // Use active template from Supabase
       let activeUrl = templateUrl;
+      let activeRegion: SavedNameRegion | null = nameRegion;
       if (!activeUrl) {
         const res = await fetch('/api/template');
         const d = await res.json();
         activeUrl = d.templateUrl;
+        activeRegion = d.nameRegion ?? null;
       }
 
       if (!activeUrl) {
@@ -72,6 +77,7 @@ export default function HomePage() {
       await generateAndDownloadCertificate({
         name: verifiedName,
         templateUrl: activeUrl,
+        nameRegion: activeRegion,
       });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to generate certificate.');
@@ -85,6 +91,7 @@ export default function HomePage() {
     setMessage('');
     setVerifiedName('');
     setTemplateUrl('');
+    setNameRegion(null);
     setName('');
     setEmail('');
     setSapid('');

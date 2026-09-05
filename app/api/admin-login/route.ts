@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeString, verifyAdminPassword, errorResponse, successResponse } from '@/lib/validation';
+import type { SavedNameRegion } from '@/lib/templateTypes';
 
 export const runtime = 'nodejs';
 
@@ -38,11 +39,27 @@ export async function POST(req: NextRequest) {
     templateUrl = urlData?.publicUrl ?? null;
   }
 
+  // Saved name region (if any) for the active template, so the dashboard can
+  // render its overlay without a second fetch. Malformed/missing → null.
+  let nameRegion: SavedNameRegion | null = null;
+  const regionValue = settings['template_name_region'];
+  if (typeof regionValue === 'string' && regionValue.length > 0) {
+    try {
+      const parsed = JSON.parse(regionValue);
+      if (parsed && typeof parsed === 'object' && typeof parsed.centerY === 'number') {
+        nameRegion = parsed as SavedNameRegion;
+      }
+    } catch {
+      nameRegion = null;
+    }
+  }
+
   return successResponse({
     authenticated: true,
     participantCount: participantRes.count ?? 0,
     lastUpload: settings['last_upload'] ?? null,
     templateUrl,
+    nameRegion,
   });
 }
 

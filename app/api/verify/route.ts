@@ -8,6 +8,7 @@ import {
   errorResponse,
   successResponse,
 } from '@/lib/validation';
+import type { SavedNameRegion } from '@/lib/templateTypes';
 
 export const runtime = 'nodejs';
 
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
 
   // 5. Fetch active certificate template URL dynamically from Supabase
   let templateUrl: string | null = null;
+  let nameRegion: SavedNameRegion | null = null;
   try {
     const { data: settingData } = await getSupabaseAdmin()
       .from('settings')
@@ -98,10 +100,34 @@ export async function POST(req: NextRequest) {
     console.warn('[verify] Failed to fetch template URL from Supabase:', err);
   }
 
-  // 6. Return the verified name and Supabase template URL
+  // 5b. Fetch the saved name region (if any) for the active template.
+  //     Malformed/missing value → null; generator falls back to legacy position.
+  try {
+    const { data: regionData } = await getSupabaseAdmin()
+      .from('settings')
+      .select('value')
+      .eq('key', 'template_name_region')
+      .maybeSingle();
+
+    if (regionData?.value) {
+      try {
+        const parsed = JSON.parse(regionData.value);
+        if (parsed && typeof parsed === 'object' && typeof parsed.centerY === 'number') {
+          nameRegion = parsed as SavedNameRegion;
+        }
+      } catch {
+        nameRegion = null;
+      }
+    }
+  } catch (err) {
+    console.warn('[verify] Failed to fetch name region from Supabase:', err);
+  }
+
+  // 6. Return the verified name, Supabase template URL, and saved name region
   return successResponse({
     verified: true,
     name: data.name,
     templateUrl,
+    nameRegion,
   });
 }
